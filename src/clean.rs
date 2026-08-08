@@ -12,6 +12,7 @@ pub enum Progress {
     Done {
         per_category: Vec<(&'static str, u64)>,
         total_freed: u64,
+        errors: Vec<String>,
     },
 }
 
@@ -26,24 +27,34 @@ pub fn spawn_delete(entries: Vec<CategoryEntry>, dry_run: bool) -> Receiver<Prog
         let total_bytes: u64 = selected.iter().map(|e| e.total_size).sum();
         let mut done_bytes = 0u64;
         let mut per_category = Vec::new();
+        let mut errors = Vec::new();
 
         for entry in &selected {
             let mut freed_in_category = 0u64;
 
             if entry.category.deletes_via_command() {
-                let ok = dry_run
-                    || std::process::Command::new("xcrun")
-                        .args(["simctl", "delete", "all"])
-                        .status()
-                        .is_ok_and(|s| s.success());
-                if ok {
-                    done_bytes += entry.total_size;
-                    freed_in_category = entry.total_size;
-                    let _ = tx.send(Progress::Item {
-                        path: format!("{} (via xcrun simctl)", entry.category.label()),
-                        done_bytes,
-                        total_bytes,
-                    });
+                let outcome = if dry_run {
+                    Ok(())
+                } else {
+                    match std::process::Command::new("xcrun").args(["simctl", "delete", "all"]).output() {
+                        Ok(out) if out.status.success() => Ok(()),
+                        Ok(out) => Err(String::from_utf8_lossy(&out.stderr).trim().to_string()),
+                        Err(e) => Err(e.to_string()),
+                    }
+                };
+                match outcome {
+                    Ok(()) => {
+                        done_bytes += entry.total_size;
+                        freed_in_category = entry.total_size;
+                        let _ = tx.send(Progress::Item {
+                            path: format!("{} (via xcrun simctl)", entry.category.label()),
+                            done_bytes,
+                            total_bytes,
+                        });
+                    }
+                    Err(err) => {
+                        errors.push(format!("{}: {err}", entry.category.label()));
+                    }
                 }
                 per_category.push((entry.category.label(), freed_in_category));
                 continue;
@@ -75,6 +86,7 @@ pub fn spawn_delete(entries: Vec<CategoryEntry>, dry_run: bool) -> Receiver<Prog
         let _ = tx.send(Progress::Done {
             per_category,
             total_freed: done_bytes,
+            errors,
         });
     });
 

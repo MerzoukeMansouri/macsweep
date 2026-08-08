@@ -138,7 +138,7 @@ fn draw_junk(f: &mut Frame, app: &App, area: Rect) {
             f.render_widget(gauge, rows[0]);
             f.render_widget(Paragraph::new(current.as_str()), rows[1]);
         }
-        JunkState::Summary { freed, per_category } => {
+        JunkState::Summary { freed, per_category, errors } => {
             let inner = block.inner(area);
             f.render_widget(block, area);
             let mut lines = vec![Line::from(Span::styled(
@@ -148,6 +148,13 @@ fn draw_junk(f: &mut Frame, app: &App, area: Rect) {
             lines.push(Line::from(""));
             for (label, size) in per_category {
                 lines.push(Line::from(format!("  {label:<22} {}", human_size(*size))));
+            }
+            if !errors.is_empty() {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled("Failed:", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
+                for err in errors {
+                    lines.push(Line::from(Span::styled(format!("  {err}"), Style::default().fg(Color::Red))));
+                }
             }
             lines.push(Line::from(""));
             lines.push(Line::from("Press any key to rescan."));

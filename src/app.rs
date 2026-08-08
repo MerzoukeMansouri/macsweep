@@ -37,6 +37,7 @@ pub enum JunkState {
     Summary {
         freed: u64,
         per_category: Vec<(&'static str, u64)>,
+        errors: Vec<String>,
     },
 }
 
@@ -153,12 +154,13 @@ impl App {
                     Progress::Done {
                         per_category,
                         total_freed,
-                    } => done = Some((per_category, total_freed)),
+                        errors,
+                    } => done = Some((per_category, total_freed, errors)),
                 }
             }
         }
-        if let Some((per_category, freed)) = done {
-            self.junk = JunkState::Summary { freed, per_category };
+        if let Some((per_category, freed, errors)) = done {
+            self.junk = JunkState::Summary { freed, per_category, errors };
         }
     }
 
