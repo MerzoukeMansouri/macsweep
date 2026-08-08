@@ -1,11 +1,18 @@
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 
-use crate::scan::{CategoryEntry, assert_deletable};
+use crate::scan::{assert_deletable, CategoryEntry};
 
 pub enum Progress {
-    Item { path: String, done_bytes: u64, total_bytes: u64 },
-    Done { per_category: Vec<(&'static str, u64)>, total_freed: u64 },
+    Item {
+        path: String,
+        done_bytes: u64,
+        total_bytes: u64,
+    },
+    Done {
+        per_category: Vec<(&'static str, u64)>,
+        total_freed: u64,
+    },
 }
 
 /// Deletes items from the selected categories on a background thread,
@@ -24,7 +31,11 @@ pub fn spawn_delete(entries: Vec<CategoryEntry>, dry_run: bool) -> Receiver<Prog
             let mut freed_in_category = 0u64;
 
             if entry.category.deletes_via_command() {
-                let ok = dry_run || std::process::Command::new("xcrun").args(["simctl", "delete", "all"]).status().is_ok_and(|s| s.success());
+                let ok = dry_run
+                    || std::process::Command::new("xcrun")
+                        .args(["simctl", "delete", "all"])
+                        .status()
+                        .is_ok_and(|s| s.success());
                 if ok {
                     done_bytes += entry.total_size;
                     freed_in_category = entry.total_size;
@@ -52,12 +63,19 @@ pub fn spawn_delete(entries: Vec<CategoryEntry>, dry_run: bool) -> Receiver<Prog
                 }
                 done_bytes += item.size;
                 freed_in_category += item.size;
-                let _ = tx.send(Progress::Item { path: item.path.display().to_string(), done_bytes, total_bytes });
+                let _ = tx.send(Progress::Item {
+                    path: item.path.display().to_string(),
+                    done_bytes,
+                    total_bytes,
+                });
             }
             per_category.push((entry.category.label(), freed_in_category));
         }
 
-        let _ = tx.send(Progress::Done { per_category, total_freed: done_bytes });
+        let _ = tx.send(Progress::Done {
+            per_category,
+            total_freed: done_bytes,
+        });
     });
 
     rx

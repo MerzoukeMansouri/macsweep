@@ -64,7 +64,11 @@ mod tests {
 
     #[test]
     fn pressure_pct_computes_ratio() {
-        let stats = MemStats { total_bytes: 100, used_bytes: 40, ..Default::default() };
+        let stats = MemStats {
+            total_bytes: 100,
+            used_bytes: 40,
+            ..Default::default()
+        };
         assert_eq!(stats.pressure_pct(), 40.0);
     }
 }

@@ -6,9 +6,9 @@ use crate::running::RunningApps;
 /// Path substrings that are never eligible for deletion, regardless of category.
 /// Safety floor independent of category scan logic.
 const DENYLIST: &[&str] = &[
-    "Mobile Documents",  // iCloud / CloudDocs
+    "Mobile Documents", // iCloud / CloudDocs
     "Keychains",
-    "com.apple.bird",    // iCloud sync daemon cache
+    "com.apple.bird", // iCloud sync daemon cache
     "com.apple.cloudd",
     "com.apple.security",
     "com.apple.icloud",
@@ -93,7 +93,11 @@ fn scan_top_level_roots(base: &Path, running: &RunningApps) -> (Vec<Item>, usize
     let Ok(read) = std::fs::read_dir(base) else {
         return (vec![], 0);
     };
-    let candidates: Vec<PathBuf> = read.filter_map(std::result::Result::ok).map(|e| e.path()).filter(|p| !is_denied(p)).collect();
+    let candidates: Vec<PathBuf> = read
+        .filter_map(std::result::Result::ok)
+        .map(|e| e.path())
+        .filter(|p| !is_denied(p))
+        .collect();
 
     let mut skipped = 0usize;
     let mut items = Vec::new();
@@ -134,15 +138,34 @@ fn scan_trash(_running: &RunningApps) -> CategoryEntry {
     let Ok(read) = std::fs::read_dir(&base) else {
         return build_entry(Category::Trash, vec![], 0);
     };
-    let candidates: Vec<PathBuf> = read.filter_map(std::result::Result::ok).map(|e| e.path()).filter(|p| !is_denied(p)).collect();
-    let items: Vec<Item> = candidates.par_iter().map(|p| Item { path: p.clone(), size: dir_size(p) }).collect();
+    let candidates: Vec<PathBuf> = read
+        .filter_map(std::result::Result::ok)
+        .map(|e| e.path())
+        .filter(|p| !is_denied(p))
+        .collect();
+    let items: Vec<Item> = candidates
+        .par_iter()
+        .map(|p| Item {
+            path: p.clone(),
+            size: dir_size(p),
+        })
+        .collect();
     build_entry(Category::Trash, items, 0)
 }
 
 fn scan_xcode_junk(_running: &RunningApps) -> CategoryEntry {
     let dev = dirs_home().join("Library/Developer/Xcode");
-    let roots = ["DerivedData", "iOS DeviceSupport", "watchOS DeviceSupport", "tvOS DeviceSupport"];
-    let candidates: Vec<PathBuf> = roots.iter().map(|r| dev.join(r)).filter(|p| p.exists() && !is_denied(p)).collect();
+    let roots = [
+        "DerivedData",
+        "iOS DeviceSupport",
+        "watchOS DeviceSupport",
+        "tvOS DeviceSupport",
+    ];
+    let candidates: Vec<PathBuf> = roots
+        .iter()
+        .map(|r| dev.join(r))
+        .filter(|p| p.exists() && !is_denied(p))
+        .collect();
     let items: Vec<Item> = candidates
         .par_iter()
         .flat_map(|root| {
@@ -153,7 +176,10 @@ fn scan_xcode_junk(_running: &RunningApps) -> CategoryEntry {
                 .map(|e| e.path())
                 .collect::<Vec<_>>()
         })
-        .map(|p| Item { size: dir_size(&p), path: p })
+        .map(|p| Item {
+            size: dir_size(&p),
+            path: p,
+        })
         .collect();
     build_entry(Category::XcodeJunk, items, 0)
 }
@@ -189,7 +215,10 @@ fn scan_localization(_running: &RunningApps) -> CategoryEntry {
                 .collect::<Vec<_>>()
         })
         .filter(|p| !is_denied(p))
-        .map(|p| Item { size: dir_size(&p), path: p })
+        .map(|p| Item {
+            size: dir_size(&p),
+            path: p,
+        })
         .collect();
     build_entry(Category::Localization, items, 0)
 }
@@ -215,7 +244,13 @@ fn ios_backups_excluding_latest(base: &Path) -> CategoryEntry {
     candidates.sort_by_key(|(_, mtime)| *mtime);
     candidates.pop(); // protect the newest backup — never deletable
 
-    let items: Vec<Item> = candidates.into_par_iter().map(|(p, _)| Item { size: dir_size(&p), path: p }).collect();
+    let items: Vec<Item> = candidates
+        .into_par_iter()
+        .map(|(p, _)| Item {
+            size: dir_size(&p),
+            path: p,
+        })
+        .collect();
     build_entry(Category::IosBackups, items, 0)
 }
 
@@ -228,14 +263,30 @@ fn scan_xcode_simulators(_running: &RunningApps) -> CategoryEntry {
     let Ok(read) = std::fs::read_dir(&base) else {
         return build_entry(Category::XcodeSimulators, vec![], 0);
     };
-    let candidates: Vec<PathBuf> = read.filter_map(std::result::Result::ok).map(|e| e.path()).filter(|p| !is_denied(p)).collect();
-    let items: Vec<Item> = candidates.par_iter().map(|p| Item { path: p.clone(), size: dir_size(p) }).collect();
+    let candidates: Vec<PathBuf> = read
+        .filter_map(std::result::Result::ok)
+        .map(|e| e.path())
+        .filter(|p| !is_denied(p))
+        .collect();
+    let items: Vec<Item> = candidates
+        .par_iter()
+        .map(|p| Item {
+            path: p.clone(),
+            size: dir_size(p),
+        })
+        .collect();
     build_entry(Category::XcodeSimulators, items, 0)
 }
 
 fn build_entry(category: Category, items: Vec<Item>, skipped_running: usize) -> CategoryEntry {
     let total_size = items.iter().map(|i| i.size).sum();
-    CategoryEntry { category, items, total_size, skipped_running, selected: true }
+    CategoryEntry {
+        category,
+        items,
+        total_size,
+        skipped_running,
+        selected: true,
+    }
 }
 
 fn dirs_home() -> PathBuf {
@@ -268,7 +319,9 @@ mod tests {
 
     #[test]
     fn denylist_blocks_icloud_paths() {
-        assert!(is_denied(Path::new("/Users/x/Library/Mobile Documents/com~apple~CloudDocs/foo")));
+        assert!(is_denied(Path::new(
+            "/Users/x/Library/Mobile Documents/com~apple~CloudDocs/foo"
+        )));
         assert!(is_denied(Path::new("/Users/x/Library/Keychains/login.keychain")));
         assert!(!is_denied(Path::new("/Users/x/Library/Caches/com.example.App")));
     }
@@ -283,8 +336,14 @@ mod tests {
     #[test]
     fn build_entry_sums_sizes() {
         let items = vec![
-            Item { path: PathBuf::from("/a"), size: 100 },
-            Item { path: PathBuf::from("/b"), size: 250 },
+            Item {
+                path: PathBuf::from("/a"),
+                size: 100,
+            },
+            Item {
+                path: PathBuf::from("/b"),
+                size: 250,
+            },
         ];
         let entry = build_entry(Category::UserCache, items, 2);
         assert_eq!(entry.total_size, 350);
@@ -323,8 +382,14 @@ mod tests {
     #[test]
     fn assert_deletable_filters_denied_even_if_leaked_into_items() {
         let items = vec![
-            Item { path: PathBuf::from("/Users/x/Library/Keychains/login.keychain"), size: 10 },
-            Item { path: PathBuf::from("/Users/x/Library/Caches/com.example.App"), size: 20 },
+            Item {
+                path: PathBuf::from("/Users/x/Library/Keychains/login.keychain"),
+                size: 10,
+            },
+            Item {
+                path: PathBuf::from("/Users/x/Library/Caches/com.example.App"),
+                size: 20,
+            },
         ];
         let safe = assert_deletable(&items);
         assert_eq!(safe.len(), 1);

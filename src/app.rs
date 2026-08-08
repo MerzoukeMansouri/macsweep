@@ -23,9 +23,21 @@ pub enum Focus {
 pub enum JunkState {
     Blank,
     Scanning(Receiver<Vec<CategoryEntry>>),
-    Review { entries: Vec<CategoryEntry>, cursor: usize, confirm: bool },
-    Cleaning { rx: Receiver<Progress>, current: String, done_bytes: u64, total_bytes: u64 },
-    Summary { freed: u64, per_category: Vec<(&'static str, u64)> },
+    Review {
+        entries: Vec<CategoryEntry>,
+        cursor: usize,
+        confirm: bool,
+    },
+    Cleaning {
+        rx: Receiver<Progress>,
+        current: String,
+        done_bytes: u64,
+        total_bytes: u64,
+    },
+    Summary {
+        freed: u64,
+        per_category: Vec<(&'static str, u64)>,
+    },
 }
 
 pub struct MemState {
@@ -40,7 +52,13 @@ impl MemState {
     fn new() -> Self {
         let mut sys = System::new_all();
         let stats = mem::sample(&mut sys);
-        Self { sys, stats, last_sample: Instant::now(), status: None, freeing: None }
+        Self {
+            sys,
+            stats,
+            last_sample: Instant::now(),
+            status: None,
+            freeing: None,
+        }
     }
 
     fn tick(&mut self) {
@@ -100,7 +118,11 @@ impl App {
 
         if let JunkState::Scanning(rx) = &self.junk {
             if let Ok(entries) = rx.try_recv() {
-                self.junk = JunkState::Review { entries, cursor: 0, confirm: false };
+                self.junk = JunkState::Review {
+                    entries,
+                    cursor: 0,
+                    confirm: false,
+                };
                 self.status = "space: toggle  ·  [c] clean  ·  Tab: sidebar".to_string();
             }
         }
@@ -110,15 +132,28 @@ impl App {
         // per frame would make the display lag behind already-completed work
         // whenever there are many small items.
         let mut done = None;
-        if let JunkState::Cleaning { rx, current, done_bytes, total_bytes } = &mut self.junk {
+        if let JunkState::Cleaning {
+            rx,
+            current,
+            done_bytes,
+            total_bytes,
+        } = &mut self.junk
+        {
             while let Ok(msg) = rx.try_recv() {
                 match msg {
-                    Progress::Item { path, done_bytes: db, total_bytes: tb } => {
+                    Progress::Item {
+                        path,
+                        done_bytes: db,
+                        total_bytes: tb,
+                    } => {
                         *current = path;
                         *done_bytes = db;
                         *total_bytes = tb;
                     }
-                    Progress::Done { per_category, total_freed } => done = Some((per_category, total_freed)),
+                    Progress::Done {
+                        per_category,
+                        total_freed,
+                    } => done = Some((per_category, total_freed)),
                 }
             }
         }
@@ -155,7 +190,13 @@ impl App {
 
         if self.focus == Focus::Sidebar {
             match code {
-                KeyCode::Up | KeyCode::Down => self.panel = if self.panel == Panel::Junk { Panel::Memory } else { Panel::Junk },
+                KeyCode::Up | KeyCode::Down => {
+                    self.panel = if self.panel == Panel::Junk {
+                        Panel::Memory
+                    } else {
+                        Panel::Junk
+                    }
+                }
                 KeyCode::Enter | KeyCode::Right => self.focus = Focus::Main,
                 _ => {}
             }
@@ -178,12 +219,21 @@ impl App {
                 }
             }
             JunkState::Scanning(_) | JunkState::Cleaning { .. } => {}
-            JunkState::Review { entries, cursor, confirm } => {
+            JunkState::Review {
+                entries,
+                cursor,
+                confirm,
+            } => {
                 if *confirm {
                     if let KeyCode::Char('y' | 'Y') = code {
                         let selected: Vec<CategoryEntry> = entries.clone();
                         let rx = clean::spawn_delete(selected, self.dry_run);
-                        self.junk = JunkState::Cleaning { rx, current: String::new(), done_bytes: 0, total_bytes: 1 };
+                        self.junk = JunkState::Cleaning {
+                            rx,
+                            current: String::new(),
+                            done_bytes: 0,
+                            total_bytes: 1,
+                        };
                         self.status = "Cleaning...".to_string();
                     } else {
                         *confirm = false;

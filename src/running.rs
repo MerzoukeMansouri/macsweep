@@ -16,7 +16,11 @@ pub struct RunningApps {
 impl RunningApps {
     pub fn snapshot() -> Self {
         let sys = System::new_all();
-        let names = sys.processes().values().map(|p| p.name().to_string_lossy().to_lowercase()).collect();
+        let names = sys
+            .processes()
+            .values()
+            .map(|p| p.name().to_string_lossy().to_lowercase())
+            .collect();
         Self { names }
     }
 
@@ -35,14 +39,18 @@ mod tests {
 
     #[test]
     fn matches_by_bundle_id_tail() {
-        let apps = RunningApps { names: HashSet::from(["google chrome helper".to_string()]) };
+        let apps = RunningApps {
+            names: HashSet::from(["google chrome helper".to_string()]),
+        };
         assert!(apps.matches("com.google.Chrome"));
         assert!(!apps.matches("com.example.NotRunning"));
     }
 
     #[test]
     fn ignores_short_tokens_to_avoid_false_positives() {
-        let apps = RunningApps { names: HashSet::from(["finder".to_string()]) };
+        let apps = RunningApps {
+            names: HashSet::from(["finder".to_string()]),
+        };
         assert!(!apps.matches("com.apple.tv")); // "tv" too short a token
     }
 }

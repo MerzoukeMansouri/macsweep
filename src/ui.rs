@@ -46,7 +46,10 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
         .into_iter()
         .map(|(label, panel)| {
             let style = if panel == app.panel {
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -54,8 +57,17 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
         })
         .collect::<Vec<_>>();
 
-    let border_style = if focused { Style::default().fg(Color::Cyan) } else { Style::default() };
-    let list = List::new(items).block(Block::default().borders(Borders::ALL).title("macsweep").border_style(border_style));
+    let border_style = if focused {
+        Style::default().fg(Color::Cyan)
+    } else {
+        Style::default()
+    };
+    let list = List::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("macsweep")
+            .border_style(border_style),
+    );
     f.render_widget(list, area);
 }
 
@@ -79,8 +91,11 @@ fn draw_junk(f: &mut Frame, app: &App, area: Rect) {
                 .enumerate()
                 .map(|(i, e)| {
                     let mark = if e.selected { "☑" } else { "☐" };
-                    let skip_note =
-                        if e.skipped_running > 0 { format!("  ({} in use, skipped)", e.skipped_running) } else { String::new() };
+                    let skip_note = if e.skipped_running > 0 {
+                        format!("  ({} in use, skipped)", e.skipped_running)
+                    } else {
+                        String::new()
+                    };
                     let text = format!(
                         "{mark} {:<22} {:>10}  {}{}",
                         e.category.label(),
@@ -98,14 +113,23 @@ fn draw_junk(f: &mut Frame, app: &App, area: Rect) {
                 .collect();
             f.render_widget(List::new(lines), inner);
         }
-        JunkState::Cleaning { current, done_bytes, total_bytes, .. } => {
+        JunkState::Cleaning {
+            current,
+            done_bytes,
+            total_bytes,
+            ..
+        } => {
             let inner = block.inner(area);
             f.render_widget(block, area);
             let rows = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Length(3), Constraint::Min(0)])
                 .split(inner);
-            let ratio = if *total_bytes == 0 { 0.0 } else { (*done_bytes as f64 / *total_bytes as f64).min(1.0) };
+            let ratio = if *total_bytes == 0 {
+                0.0
+            } else {
+                (*done_bytes as f64 / *total_bytes as f64).min(1.0)
+            };
             let gauge = Gauge::default()
                 .block(Block::default().title("Cleaning"))
                 .gauge_style(Style::default().fg(Color::Cyan))
@@ -139,7 +163,12 @@ fn draw_memory(f: &mut Frame, app: &App, area: Rect) {
 
     let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Length(3), Constraint::Length(1), Constraint::Min(0)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
         .split(inner);
 
     let stats = &app.mem.stats;
@@ -166,7 +195,11 @@ fn draw_memory(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(Paragraph::new("[p] Free Up RAM (sudo purge)"), rows[2]);
 
     let avail_line = format!("Available: {}", human_size(stats.available_bytes));
-    let line = app.mem.status.as_deref().map_or(avail_line.clone(), |s| format!("{avail_line}  ·  {s}"));
+    let line = app
+        .mem
+        .status
+        .as_deref()
+        .map_or(avail_line.clone(), |s| format!("{avail_line}  ·  {s}"));
     f.render_widget(Paragraph::new(line), rows[3]);
 }
 
