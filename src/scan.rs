@@ -28,6 +28,22 @@ pub enum Category {
     Localization,
     IosBackups,
     XcodeSimulators,
+    TmSnapshots,
+}
+
+/// How a category is actually removed. Most are plain filesystem paths;
+/// a few need an external command instead because the underlying state
+/// isn't something you can safely `rm` by hand. See `clean::spawn_delete`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cleanup {
+    Filesystem,
+    /// Wipes `CoreSimulator` device data in one shot via `xcrun simctl delete all`.
+    SimctlDeleteAll,
+    /// Deletes each item's path (a snapshot tag, not a real fs path) via
+    /// `tmutil deletelocalsnapshots <tag>`. Space freed is measured as an
+    /// actual before/after disk free-space delta rather than summed — APFS
+    /// snapshots are copy-on-write, so per-snapshot size isn't meaningful.
+    TmSnapshotThin,
 }
 
 impl Category {
@@ -40,13 +56,16 @@ impl Category {
             Category::Localization => "Localization files",
             Category::IosBackups => "iOS Device Backups (stale)",
             Category::XcodeSimulators => "Xcode Simulators",
+            Category::TmSnapshots => "Time Machine Snapshots (stale)",
         }
     }
 
-    /// Categories whose deletion isn't a per-item filesystem remove — cleaned
-    /// via a single external command instead (see `clean::spawn_delete`).
-    pub fn deletes_via_command(self) -> bool {
-        matches!(self, Category::XcodeSimulators)
+    pub fn cleanup(self) -> Cleanup {
+        match self {
+            Category::XcodeSimulators => Cleanup::SimctlDeleteAll,
+            Category::TmSnapshots => Cleanup::TmSnapshotThin,
+            _ => Cleanup::Filesystem,
+        }
     }
 }
 
@@ -278,6 +297,45 @@ fn scan_xcode_simulators(_running: &RunningApps) -> CategoryEntry {
     build_entry(Category::XcodeSimulators, items, 0)
 }
 
+/// Every local TM snapshot tag except the most recent one — same
+/// protect-the-latest pattern as `ios_backups_excluding_latest`, so the most
+/// recent local recovery point is never selectable/deletable.
+fn exclude_latest(mut tags: Vec<String>) -> Vec<String> {
+    tags.sort(); // snapshot tags are date-suffixed, so lexicographic == chronological
+    tags.pop();
+    tags
+}
+
+fn list_tm_snapshot_tags() -> Vec<String> {
+    let Ok(out) = std::process::Command::new("tmutil").args(["listlocalsnapshots", "/"]).output() else {
+        return vec![];
+    };
+    if !out.status.success() {
+        return vec![];
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| l.starts_with("com.apple.TimeMachine."))
+        .map(str::to_string)
+        .collect()
+}
+
+/// `tmutil deletelocalsnapshots` wants the bare timestamp, not the full tag
+/// `listlocalsnapshots` prints — passing the full `com.apple.TimeMachine.<ts>.local`
+/// form makes tmutil misparse it as a disk argument and silently no-op.
+fn bare_snapshot_timestamp(tag: &str) -> &str {
+    let without_prefix = tag.strip_prefix("com.apple.TimeMachine.").unwrap_or(tag);
+    without_prefix.strip_suffix(".local").unwrap_or(without_prefix)
+}
+
+fn scan_tm_snapshots(_running: &RunningApps) -> CategoryEntry {
+    let items = exclude_latest(list_tm_snapshot_tags())
+        .into_iter()
+        .map(|tag| Item { path: PathBuf::from(bare_snapshot_timestamp(&tag)), size: 0 })
+        .collect();
+    build_entry(Category::TmSnapshots, items, 0)
+}
+
 fn build_entry(category: Category, items: Vec<Item>, skipped_running: usize) -> CategoryEntry {
     let total_size = items.iter().map(|i| i.size).sum();
     CategoryEntry {
@@ -295,7 +353,7 @@ fn dirs_home() -> PathBuf {
 
 pub fn scan_all() -> Vec<CategoryEntry> {
     let running = RunningApps::snapshot();
-    let scanners: [fn(&RunningApps) -> CategoryEntry; 7] = [
+    let scanners: [fn(&RunningApps) -> CategoryEntry; 8] = [
         scan_user_cache,
         scan_logs,
         scan_trash,
@@ -303,6 +361,7 @@ pub fn scan_all() -> Vec<CategoryEntry> {
         scan_localization,
         scan_ios_backups,
         scan_xcode_simulators,
+        scan_tm_snapshots,
     ];
     scanners.par_iter().map(|f| f(&running)).collect()
 }
@@ -373,10 +432,36 @@ mod tests {
     }
 
     #[test]
-    fn xcode_simulators_delete_via_command_not_filesystem() {
-        assert!(Category::XcodeSimulators.deletes_via_command());
-        assert!(!Category::IosBackups.deletes_via_command());
-        assert!(!Category::UserCache.deletes_via_command());
+    fn command_categories_use_the_right_cleanup_strategy() {
+        assert_eq!(Category::XcodeSimulators.cleanup(), Cleanup::SimctlDeleteAll);
+        assert_eq!(Category::TmSnapshots.cleanup(), Cleanup::TmSnapshotThin);
+        assert_eq!(Category::IosBackups.cleanup(), Cleanup::Filesystem);
+        assert_eq!(Category::UserCache.cleanup(), Cleanup::Filesystem);
+    }
+
+    #[test]
+    fn exclude_latest_protects_the_most_recent_snapshot_tag() {
+        let tags = vec![
+            "com.apple.TimeMachine.2024-01-01-120000".to_string(),
+            "com.apple.TimeMachine.2024-06-01-120000".to_string(),
+            "com.apple.TimeMachine.2024-03-01-120000".to_string(),
+        ];
+        let stale = exclude_latest(tags);
+        assert_eq!(stale, vec![
+            "com.apple.TimeMachine.2024-01-01-120000".to_string(),
+            "com.apple.TimeMachine.2024-03-01-120000".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn exclude_latest_empty_when_only_one_snapshot() {
+        assert!(exclude_latest(vec!["com.apple.TimeMachine.2024-01-01-120000".to_string()]).is_empty());
+    }
+
+    #[test]
+    fn bare_snapshot_timestamp_strips_prefix_and_local_suffix() {
+        assert_eq!(bare_snapshot_timestamp("com.apple.TimeMachine.2026-08-08-232738.local"), "2026-08-08-232738");
+        assert_eq!(bare_snapshot_timestamp("2026-08-08-232738"), "2026-08-08-232738");
     }
 
     #[test]

@@ -7,7 +7,7 @@ CleanMyMac-style TUI for cleaning junk files and freeing RAM on macOS.
 
 ## Features
 
-- **Junk Cleanup**: user/app cache, logs, trash, Xcode derived data & device support, unused app localizations, stale iOS device backups, Xcode Simulators
+- **Junk Cleanup**: user/app cache, logs, trash, Xcode derived data & device support, unused app localizations, stale iOS device backups, Xcode Simulators, stale Time Machine local snapshots
 - **Memory**: live used/swap/available gauges, `sudo purge` free-up
 - Runs entirely local, permanent delete (no undo) — always review the checklist and confirm before cleaning
 - `--dry-run` flag scans and reports without deleting anything
@@ -56,6 +56,7 @@ macsweep --dry-run  # scan and report only, never deletes
 - Deletion is permanent — there is no Trash staging
 - iOS Device Backups: the most recently modified backup is protected automatically and never listed as deletable — only stale/older device backups are eligible
 - Xcode Simulators: cleaned via `xcrun simctl delete all` (device data only, not installed runtime images)
+- Time Machine Snapshots: the most recent local snapshot is protected automatically, same as iOS backups — only stale ones are eligible. Freed size is a measured disk free-space delta (before/after `tmutil deletelocalsnapshots`), not a summed estimate, since APFS snapshots are copy-on-write and don't have a meaningful per-snapshot size
 
 ## What's excluded from V1
 

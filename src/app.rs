@@ -264,10 +264,16 @@ impl App {
                         }
                     }
                     KeyCode::Char('c') => {
-                        let total: u64 = entries.iter().filter(|e| e.selected).map(|e| e.total_size).sum();
-                        if total > 0 {
+                        let selected: Vec<&CategoryEntry> = entries.iter().filter(|e| e.selected).collect();
+                        let has_items = selected.iter().any(|e| !e.items.is_empty());
+                        if has_items {
+                            let total: u64 = selected.iter().map(|e| e.total_size).sum();
                             *confirm = true;
-                            self.status = format!("Delete {}? [y/N]", crate::ui::human_size(total));
+                            self.status = if total > 0 {
+                                format!("Delete {}? [y/N]", crate::ui::human_size(total))
+                            } else {
+                                "Delete selected? (exact size unknown until cleaned) [y/N]".to_string()
+                            };
                         }
                     }
                     _ => {}
