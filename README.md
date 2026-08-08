@@ -15,6 +15,12 @@ CleanMyMac-style TUI for cleaning junk files and freeing RAM on macOS.
 ## Install
 
 ```bash
+brew install merzoukemansouri/homebrew/macsweep
+```
+
+or tap first, then install:
+
+```bash
 brew tap merzoukemansouri/homebrew
 brew install macsweep
 ```
