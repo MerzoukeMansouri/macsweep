@@ -36,26 +36,31 @@ pub fn draw(f: &mut Frame, app: &App) {
     match app.panel {
         Panel::Junk => draw_junk(f, app, body[1]),
         Panel::Memory => draw_memory(f, app, body[1]),
+        Panel::Maintenance => draw_maintenance(f, app, body[1]),
     }
     draw_status(f, app, root[1]);
 }
 
 fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
     let focused = app.focus == Focus::Sidebar;
-    let items = [("Junk Cleanup", Panel::Junk), ("Memory", Panel::Memory)]
-        .into_iter()
-        .map(|(label, panel)| {
-            let style = if panel == app.panel {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            };
-            ListItem::new(format!(" {label}")).style(style)
-        })
-        .collect::<Vec<_>>();
+    let items = [
+        ("Junk Cleanup", Panel::Junk),
+        ("Memory", Panel::Memory),
+        ("Maintenance", Panel::Maintenance),
+    ]
+    .into_iter()
+    .map(|(label, panel)| {
+        let style = if panel == app.panel {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+        ListItem::new(format!(" {label}")).style(style)
+    })
+    .collect::<Vec<_>>();
 
     let border_style = if focused {
         Style::default().fg(Color::Cyan)
@@ -218,6 +223,37 @@ fn draw_memory(f: &mut Frame, app: &App, area: Rect) {
         .as_deref()
         .map_or(avail_line.clone(), |s| format!("{avail_line}  ·  {s}"));
     f.render_widget(Paragraph::new(line), rows[3]);
+}
+
+fn draw_maintenance(f: &mut Frame, app: &App, area: Rect) {
+    let block = Block::default().borders(Borders::ALL).title("Maintenance");
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(inner);
+
+    let items: Vec<ListItem> = crate::maintenance::ACTIONS
+        .iter()
+        .enumerate()
+        .map(|(i, action)| {
+            let style = if i == app.maintenance.cursor {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            };
+            ListItem::new(format!("  {}", action.label)).style(style)
+        })
+        .collect();
+    f.render_widget(List::new(items), rows[0]);
+
+    if let Some(status) = &app.maintenance.status {
+        f.render_widget(Paragraph::new(status.as_str()), rows[1]);
+    } else {
+        f.render_widget(Paragraph::new("[Enter] run selected action"), rows[1]);
+    }
 }
 
 fn draw_status(f: &mut Frame, app: &App, area: Rect) {

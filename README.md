@@ -9,6 +9,7 @@ CleanMyMac-style TUI for cleaning junk files and freeing RAM on macOS.
 
 - **Junk Cleanup**: user/app cache, logs, trash, Xcode derived data & device support, unused app localizations, stale iOS device backups, Xcode Simulators, stale Time Machine local snapshots
 - **Memory**: live used/swap/available gauges, `sudo purge` free-up
+- **Maintenance**: flush DNS cache (`sudo dscacheutil -flushcache` + `sudo killall -HUP mDNSResponder`)
 - Runs entirely local, permanent delete (no undo) — always review the checklist and confirm before cleaning
 - `--dry-run` flag scans and reports without deleting anything
 
@@ -45,6 +46,7 @@ macsweep --dry-run  # scan and report only, never deletes
 | `space` | toggle category selection (Junk panel) |
 | `c` | clean selected categories (Junk panel) |
 | `p` | free up RAM via `sudo purge` (Memory panel) |
+| `Enter` | run selected action (Maintenance panel) |
 | `y`/`N` | confirm/cancel a pending delete |
 | `q` | quit |
 

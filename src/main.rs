@@ -9,6 +9,7 @@
 
 mod app;
 mod clean;
+mod maintenance;
 mod mem;
 mod running;
 mod scan;

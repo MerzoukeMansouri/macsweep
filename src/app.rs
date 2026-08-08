@@ -5,6 +5,7 @@ use std::time::Instant;
 use sysinfo::System;
 
 use crate::clean::{self, Progress};
+use crate::maintenance;
 use crate::mem::{self, MemStats};
 use crate::scan::{self, CategoryEntry};
 
@@ -12,6 +13,7 @@ use crate::scan::{self, CategoryEntry};
 pub enum Panel {
     Junk,
     Memory,
+    Maintenance,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -91,11 +93,57 @@ impl MemState {
     }
 }
 
+pub struct MaintenanceState {
+    pub cursor: usize,
+    pub status: Option<String>,
+    running: Option<Receiver<anyhow::Result<()>>>,
+}
+
+impl MaintenanceState {
+    fn new() -> Self {
+        Self {
+            cursor: 0,
+            status: None,
+            running: None,
+        }
+    }
+
+    fn tick(&mut self) {
+        if let Some(rx) = &self.running {
+            if let Ok(result) = rx.try_recv() {
+                self.status = Some(match result {
+                    Ok(()) => format!("{} done.", maintenance::ACTIONS[self.cursor].label),
+                    Err(e) => format!("{} failed: {e}", maintenance::ACTIONS[self.cursor].label),
+                });
+                self.running = None;
+            }
+        }
+    }
+
+    fn run_selected(&mut self) {
+        if self.running.is_some() {
+            return;
+        }
+        let action = &maintenance::ACTIONS[self.cursor];
+        self.status = Some(format!(
+            "{} (sudo password may be required in this terminal)...",
+            action.label
+        ));
+        let run = action.run;
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let _ = tx.send(run());
+        });
+        self.running = Some(rx);
+    }
+}
+
 pub struct App {
     pub panel: Panel,
     pub focus: Focus,
     pub junk: JunkState,
     pub mem: MemState,
+    pub maintenance: MaintenanceState,
     pub status: String,
     pub dry_run: bool,
     pub should_quit: bool,
@@ -108,6 +156,7 @@ impl App {
             focus: Focus::Sidebar,
             junk: JunkState::Blank,
             mem: MemState::new(),
+            maintenance: MaintenanceState::new(),
             status: "Tab: switch focus  ·  [s] scan  ·  [q] quit".to_string(),
             dry_run,
             should_quit: false,
@@ -116,6 +165,7 @@ impl App {
 
     pub fn tick(&mut self) {
         self.mem.tick();
+        self.maintenance.tick();
 
         if let JunkState::Scanning(rx) = &self.junk {
             if let Ok(entries) = rx.try_recv() {
@@ -196,13 +246,8 @@ impl App {
 
         if self.focus == Focus::Sidebar {
             match code {
-                KeyCode::Up | KeyCode::Down => {
-                    self.panel = if self.panel == Panel::Junk {
-                        Panel::Memory
-                    } else {
-                        Panel::Junk
-                    }
-                }
+                KeyCode::Up => self.panel = Self::prev_panel(self.panel),
+                KeyCode::Down => self.panel = Self::next_panel(self.panel),
                 KeyCode::Enter | KeyCode::Right => self.focus = Focus::Main,
                 _ => {}
             }
@@ -212,6 +257,21 @@ impl App {
         match self.panel {
             Panel::Junk => self.on_key_junk(code),
             Panel::Memory => self.on_key_memory(code),
+            Panel::Maintenance => self.on_key_maintenance(code),
+        }
+    }
+
+    fn next_panel(panel: Panel) -> Panel {
+        match panel {
+            Panel::Junk => Panel::Memory,
+            Panel::Memory | Panel::Maintenance => Panel::Maintenance,
+        }
+    }
+
+    fn prev_panel(panel: Panel) -> Panel {
+        match panel {
+            Panel::Junk | Panel::Memory => Panel::Junk,
+            Panel::Maintenance => Panel::Memory,
         }
     }
 
@@ -289,6 +349,24 @@ impl App {
     fn on_key_memory(&mut self, code: crossterm::event::KeyCode) {
         if code == crossterm::event::KeyCode::Char('p') {
             self.mem.free_up();
+        }
+    }
+
+    fn on_key_maintenance(&mut self, code: crossterm::event::KeyCode) {
+        use crossterm::event::KeyCode;
+        match code {
+            KeyCode::Up => {
+                if self.maintenance.cursor > 0 {
+                    self.maintenance.cursor -= 1;
+                }
+            }
+            KeyCode::Down => {
+                if self.maintenance.cursor + 1 < maintenance::ACTIONS.len() {
+                    self.maintenance.cursor += 1;
+                }
+            }
+            KeyCode::Enter => self.maintenance.run_selected(),
+            _ => {}
         }
     }
 }
