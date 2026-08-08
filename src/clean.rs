@@ -22,6 +22,22 @@ pub fn spawn_delete(entries: Vec<CategoryEntry>, dry_run: bool) -> Receiver<Prog
 
         for entry in &selected {
             let mut freed_in_category = 0u64;
+
+            if entry.category.deletes_via_command() {
+                let ok = dry_run || std::process::Command::new("xcrun").args(["simctl", "delete", "all"]).status().is_ok_and(|s| s.success());
+                if ok {
+                    done_bytes += entry.total_size;
+                    freed_in_category = entry.total_size;
+                    let _ = tx.send(Progress::Item {
+                        path: format!("{} (via xcrun simctl)", entry.category.label()),
+                        done_bytes,
+                        total_bytes,
+                    });
+                }
+                per_category.push((entry.category.label(), freed_in_category));
+                continue;
+            }
+
             for item in assert_deletable(&entry.items) {
                 if !dry_run {
                     let result = if item.path.is_dir() {

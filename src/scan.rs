@@ -26,6 +26,8 @@ pub enum Category {
     Trash,
     XcodeJunk,
     Localization,
+    IosBackups,
+    XcodeSimulators,
 }
 
 impl Category {
@@ -36,9 +38,16 @@ impl Category {
             Category::Trash => "Trash",
             Category::XcodeJunk => "Xcode Derived Data",
             Category::Localization => "Localization files",
+            Category::IosBackups => "iOS Device Backups (stale)",
+            Category::XcodeSimulators => "Xcode Simulators",
         }
     }
 
+    /// Categories whose deletion isn't a per-item filesystem remove — cleaned
+    /// via a single external command instead (see `clean::spawn_delete`).
+    pub fn deletes_via_command(self) -> bool {
+        matches!(self, Category::XcodeSimulators)
+    }
 }
 
 /// A single deletable unit within a category: one top-level directory or file.
@@ -185,6 +194,45 @@ fn scan_localization(_running: &RunningApps) -> CategoryEntry {
     build_entry(Category::Localization, items, 0)
 }
 
+/// Every backup folder under MobileSync/Backup except the most recently
+/// modified one — the latest is protected automatically and never appears
+/// here, so it can never be selected or deleted.
+fn scan_ios_backups(_running: &RunningApps) -> CategoryEntry {
+    let base = dirs_home().join("Library/Application Support/MobileSync/Backup");
+    ios_backups_excluding_latest(&base)
+}
+
+fn ios_backups_excluding_latest(base: &Path) -> CategoryEntry {
+    let Ok(read) = std::fs::read_dir(base) else {
+        return build_entry(Category::IosBackups, vec![], 0);
+    };
+    let mut candidates: Vec<(PathBuf, std::time::SystemTime)> = read
+        .filter_map(std::result::Result::ok)
+        .map(|e| e.path())
+        .filter(|p| !is_denied(p))
+        .filter_map(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok().map(|t| (p, t)))
+        .collect();
+    candidates.sort_by_key(|(_, mtime)| *mtime);
+    candidates.pop(); // protect the newest backup — never deletable
+
+    let items: Vec<Item> = candidates.into_par_iter().map(|(p, _)| Item { size: dir_size(&p), path: p }).collect();
+    build_entry(Category::IosBackups, items, 0)
+}
+
+/// `simctl delete all` wipes device data (old junk that accumulates per
+/// simulator), not the installed runtime images. We only scan for size/count
+/// display here; actual deletion in clean.rs shells out once for the whole
+/// category rather than removing these paths directly.
+fn scan_xcode_simulators(_running: &RunningApps) -> CategoryEntry {
+    let base = dirs_home().join("Library/Developer/CoreSimulator/Devices");
+    let Ok(read) = std::fs::read_dir(&base) else {
+        return build_entry(Category::XcodeSimulators, vec![], 0);
+    };
+    let candidates: Vec<PathBuf> = read.filter_map(std::result::Result::ok).map(|e| e.path()).filter(|p| !is_denied(p)).collect();
+    let items: Vec<Item> = candidates.par_iter().map(|p| Item { path: p.clone(), size: dir_size(p) }).collect();
+    build_entry(Category::XcodeSimulators, items, 0)
+}
+
 fn build_entry(category: Category, items: Vec<Item>, skipped_running: usize) -> CategoryEntry {
     let total_size = items.iter().map(|i| i.size).sum();
     CategoryEntry { category, items, total_size, skipped_running, selected: true }
@@ -196,8 +244,15 @@ fn dirs_home() -> PathBuf {
 
 pub fn scan_all() -> Vec<CategoryEntry> {
     let running = RunningApps::snapshot();
-    let scanners: [fn(&RunningApps) -> CategoryEntry; 5] =
-        [scan_user_cache, scan_logs, scan_trash, scan_xcode_junk, scan_localization];
+    let scanners: [fn(&RunningApps) -> CategoryEntry; 7] = [
+        scan_user_cache,
+        scan_logs,
+        scan_trash,
+        scan_xcode_junk,
+        scan_localization,
+        scan_ios_backups,
+        scan_xcode_simulators,
+    ];
     scanners.par_iter().map(|f| f(&running)).collect()
 }
 
@@ -235,6 +290,34 @@ mod tests {
         assert_eq!(entry.total_size, 350);
         assert_eq!(entry.skipped_running, 2);
         assert!(entry.selected);
+    }
+
+    #[test]
+    fn ios_backups_protects_the_most_recently_modified_folder() {
+        let dir = std::env::temp_dir().join(format!("macsweep-test-{:?}", std::thread::current().id()));
+        let old = dir.join("old-device");
+        let newest = dir.join("newest-device");
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::create_dir_all(&newest).unwrap();
+        std::fs::write(old.join("f"), [0u8; 10]).unwrap();
+        std::fs::write(newest.join("f"), [0u8; 10]).unwrap();
+
+        // force a clear mtime gap regardless of filesystem timestamp resolution
+        let past = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        std::fs::File::open(&old).unwrap().set_modified(past).unwrap();
+
+        let entry = ios_backups_excluding_latest(&dir);
+        assert_eq!(entry.items.len(), 1);
+        assert_eq!(entry.items[0].path, old);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn xcode_simulators_delete_via_command_not_filesystem() {
+        assert!(Category::XcodeSimulators.deletes_via_command());
+        assert!(!Category::IosBackups.deletes_via_command());
+        assert!(!Category::UserCache.deletes_via_command());
     }
 
     #[test]
