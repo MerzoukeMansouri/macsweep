@@ -36,7 +36,10 @@ pub fn spawn_delete(entries: Vec<CategoryEntry>, dry_run: bool) -> Receiver<Prog
                 let outcome = if dry_run {
                     Ok(())
                 } else {
-                    match std::process::Command::new("xcrun").args(["simctl", "delete", "all"]).output() {
+                    match std::process::Command::new("xcrun")
+                        .args(["simctl", "delete", "all"])
+                        .output()
+                    {
                         Ok(out) if out.status.success() => Ok(()),
                         Ok(out) => Err(String::from_utf8_lossy(&out.stderr).trim().to_string()),
                         Err(e) => Err(e.to_string()),

@@ -160,7 +160,11 @@ impl App {
             }
         }
         if let Some((per_category, freed, errors)) = done {
-            self.junk = JunkState::Summary { freed, per_category, errors };
+            self.junk = JunkState::Summary {
+                freed,
+                per_category,
+                errors,
+            };
         }
     }
 
