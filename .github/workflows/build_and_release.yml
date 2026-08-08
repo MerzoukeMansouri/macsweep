@@ -1,0 +1,24 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    uses: MerzoukeMansouri/rust-github-reusable/.github/workflows/ci.yml@main
+
+  release:
+    needs: ci
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    uses: MerzoukeMansouri/rust-github-reusable/.github/workflows/release.yml@main
+    with:
+      binary_name: macsweep
+      repo: MerzoukeMansouri/macsweep
+      formula_class: Macsweep
+      formula_desc: "CleanMyMac-style TUI for cleaning junk files and freeing RAM"
+    secrets:
+      TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
