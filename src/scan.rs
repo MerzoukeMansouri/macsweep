@@ -307,7 +307,10 @@ fn exclude_latest(mut tags: Vec<String>) -> Vec<String> {
 }
 
 fn list_tm_snapshot_tags() -> Vec<String> {
-    let Ok(out) = std::process::Command::new("tmutil").args(["listlocalsnapshots", "/"]).output() else {
+    let Ok(out) = std::process::Command::new("tmutil")
+        .args(["listlocalsnapshots", "/"])
+        .output()
+    else {
         return vec![];
     };
     if !out.status.success() {
@@ -331,7 +334,10 @@ fn bare_snapshot_timestamp(tag: &str) -> &str {
 fn scan_tm_snapshots(_running: &RunningApps) -> CategoryEntry {
     let items = exclude_latest(list_tm_snapshot_tags())
         .into_iter()
-        .map(|tag| Item { path: PathBuf::from(bare_snapshot_timestamp(&tag)), size: 0 })
+        .map(|tag| Item {
+            path: PathBuf::from(bare_snapshot_timestamp(&tag)),
+            size: 0,
+        })
         .collect();
     build_entry(Category::TmSnapshots, items, 0)
 }
@@ -447,10 +453,13 @@ mod tests {
             "com.apple.TimeMachine.2024-03-01-120000".to_string(),
         ];
         let stale = exclude_latest(tags);
-        assert_eq!(stale, vec![
-            "com.apple.TimeMachine.2024-01-01-120000".to_string(),
-            "com.apple.TimeMachine.2024-03-01-120000".to_string(),
-        ]);
+        assert_eq!(
+            stale,
+            vec![
+                "com.apple.TimeMachine.2024-01-01-120000".to_string(),
+                "com.apple.TimeMachine.2024-03-01-120000".to_string(),
+            ]
+        );
     }
 
     #[test]
@@ -460,7 +469,10 @@ mod tests {
 
     #[test]
     fn bare_snapshot_timestamp_strips_prefix_and_local_suffix() {
-        assert_eq!(bare_snapshot_timestamp("com.apple.TimeMachine.2026-08-08-232738.local"), "2026-08-08-232738");
+        assert_eq!(
+            bare_snapshot_timestamp("com.apple.TimeMachine.2026-08-08-232738.local"),
+            "2026-08-08-232738"
+        );
         assert_eq!(bare_snapshot_timestamp("2026-08-08-232738"), "2026-08-08-232738");
     }
 
